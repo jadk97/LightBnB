@@ -1,13 +1,5 @@
-const properties = require('./json/properties.json');
-const users = require('./json/users.json');
-const { Pool } = require('pg');
+const db = require('../db/index');
 
-const pool = new Pool({
-  user: 'vagrant',
-  password: '123',
-  host: 'localhost',
-  database: 'lightbnb'
-});
 /// Users
 
 /**
@@ -16,7 +8,7 @@ const pool = new Pool({
  * @return {Promise<{}>} A promise to the user.
  */
 const getUserWithEmail = function (email) {
-  return pool.query(`
+  return db.query(`
   SELECT * FROM users 
   WHERE email = $1
   `, [email])
@@ -36,7 +28,7 @@ exports.getUserWithEmail = getUserWithEmail;
  * @return {Promise<{}>} A promise to the user.
  */
 const getUserWithId = function (id) {
-  return pool.query(`
+  return db.query(`
   SELECT * FROM users
   WHERE id = $1`, [id])
     .then(res => {
@@ -59,7 +51,7 @@ exports.getUserWithId = getUserWithId;
  */
 const addUser = function (user) {
   let values = [user.name, user.email, user.password];
-  return pool.query(`
+  return db.query(`
   INSERT INTO users(name, email, password) VALUES ($1, $2, $3) 
   RETURNING*`, values)
     .then(res => res.rows[0]);
@@ -75,7 +67,7 @@ exports.addUser = addUser;
  */
 const getAllReservations = function (guest_id, limit = 10) {
   let values = [guest_id, limit];
-  return pool.query(`SELECT properties.*, reservations.*, avg(rating) as average_rating
+  return db.query(`SELECT properties.*, reservations.*, avg(rating) as average_rating
   FROM reservations
   JOIN properties ON reservations.property_id = properties.id
   JOIN property_reviews ON properties.id = property_reviews.property_id 
@@ -104,7 +96,7 @@ const getAllProperties = function (options, limit = 10) {
   let queryString = `
  SELECT properties.*, avg(property_reviews.rating) as average_rating
  FROM properties
- JOIN property_reviews ON properties.id = property_id
+ LEFT JOIN property_reviews ON properties.id = property_id
  `;
   let paramsChecker = false;
   // 3
@@ -122,13 +114,13 @@ const getAllProperties = function (options, limit = 10) {
   }
 
   if (options.minimum_price_per_night) {
-    queryParams.push(options.minimum_price_per_night);
+    queryParams.push(options.minimum_price_per_night * 100);
     queryString += `${paramsChecker ? 'AND' : 'WHERE'} cost_per_night >= $${queryParams.length} `;
     paramsChecker = true;
   }
 
   if (options.maximum_price_per_night) {
-    queryParams.push(options.maximum_price_per_night);
+    queryParams.push(options.maximum_price_per_night * 100);
     queryString += `${paramsChecker ? 'AND' : 'WHERE'} cost_per_night <= $${queryParams.length} `;
     paramsChecker = true;
   }
@@ -154,7 +146,7 @@ const getAllProperties = function (options, limit = 10) {
   console.log(queryString, queryParams);
 
   // 6
-  return pool.query(queryString, queryParams)
+  return db.query(queryString, queryParams)
     .then(res => res.rows);
 }
 
@@ -168,9 +160,24 @@ exports.getAllProperties = getAllProperties;
  * @return {Promise<{}>} A promise to the property.
  */
 const addProperty = function (property) {
-  const propertyId = Object.keys(properties).length + 1;
-  property.id = propertyId;
-  properties[propertyId] = property;
-  return Promise.resolve(property);
+  // const propertyId = Object.keys(properties).length + 1;
+  // property.id = propertyId;
+  // properties[propertyId] = property;
+  // return Promise.resolve(property);
+  let values = [];
+  for (let p in property){
+    console.log(p);
+    if(p !== 'owner_id'){
+    values.push(property[p]);
+    }
+  }
+  console.log(values);
+  // console.log(values);
+  // console.log(values.length);
+  return db.pool.query(`
+  INSERT INTO properties(title, description, number_of_bedrooms, number_of_bathrooms, parking_spaces, cost_per_night, thumbnail_photo_url, cover_photo_url, street, country, city, province, post_code) 
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+  RETURNING*`, values)
+    .then(res => res.rows[0]);
 }
 exports.addProperty = addProperty;
